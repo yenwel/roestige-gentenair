@@ -1,0 +1,7 @@
+[package]
+name = "roestige-gentenair"
+version = "0.1.0"
+authors = ["Jan Vandepitte <Jan.Vandepitte@sirus.be>"]
+edition = "2018"
+
+[dependencies]
