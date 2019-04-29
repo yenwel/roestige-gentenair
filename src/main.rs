@@ -1,82 +1,44 @@
 #[macro_use]
-extern crate actix_web;
+extern crate json;
 
-use std::{env, io};
-
-use actix_files as fs;
-use actix_session::{CookieSession, Session};
-use actix_web::http::{header, Method, StatusCode};
 use actix_web::{
-    error, guard, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
-    Result,
+    error, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer,
 };
-use bytes::Bytes;
-use futures::unsync::mpsc;
-use futures::{future::ok, Future, Stream};
+use bytes::BytesMut;
+use futures::{Future, Stream};
+use json::JsonValue;
+use serde_derive::{Deserialize, Serialize};
 
-fn main() -> io::Result<()> {
-    env::set_var("RUST_LOG", "actix_web=debug");
+/// This handler manually load request payload and parse json-rust
+fn index_mjsonrust(pl: web::Payload) -> impl Future<Item = HttpResponse, Error = Error> {
+    pl.concat2().from_err().and_then(|body| {
+        // body is loaded, now we can deserialize json-rust
+        let result = json::parse(std::str::from_utf8(&body).unwrap()); // return Result
+        let injson: JsonValue = match result {
+            Ok(v) => v,
+            Err(e) => json::object! {"err" => e.to_string() },
+        };
+        let myjson = injson.dump();
+        println!("{}", myjson);
+        Ok(HttpResponse::Ok()
+            .content_type("application/json")
+            .body(myjson))
+    })
+}
+
+
+fn main() -> std::io::Result<()> {
+    std::env::set_var("RUST_LOG", "actix_web=info");
     env_logger::init();
-    let sys = actix_rt::System::new("basic-example");
 
     HttpServer::new(|| {
         App::new()
             // enable logger
             .wrap(middleware::Logger::default())
-            // cookie session middleware
-            .wrap(CookieSession::signed(&[0; 32]).secure(false))
-            // register favicon
-            .service(favicon)
-            // register simple route, handle all methods
-            .service(welcome)
-            // with path parameters
-            .service(web::resource("/user/{name}").route(web::get().to(with_param)))
-            // async handler
             .service(
-                web::resource("/async/{name}").route(web::get().to_async(index_async)),
+                web::resource("/").route(web::post().to_async(index_mjsonrust)),
             )
-            // async handler
-            .service(
-                web::resource("/async-body/{name}")
-                    .route(web::get().to(index_async_body)),
-            )
-            .service(
-                web::resource("/test").to(|req: HttpRequest| match *req.method() {
-                    Method::GET => HttpResponse::Ok(),
-                    Method::POST => HttpResponse::MethodNotAllowed(),
-                    _ => HttpResponse::NotFound(),
-                }),
-            )
-            .service(web::resource("/error").to(|| {
-                error::InternalError::new(
-                    io::Error::new(io::ErrorKind::Other, "test"),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )
-            }))
-            // static files
-            .service(fs::Files::new("/static", "static").show_files_listing())
-            // redirect
-            .service(web::resource("/").route(web::get().to(|req: HttpRequest| {
-                println!("{:?}", req);
-                HttpResponse::Found()
-                    .header(header::LOCATION, "static/welcome.html")
-                    .finish()
-            })))
-            // default
-            .default_resource(|r| {
-                // 404 for GET request
-                r.route(web::get().to(p404))
-                    // all requests that are not `GET`
-                    .route(
-                        web::route()
-                            .guard(guard::Not(guard::Get()))
-                            .to(|| HttpResponse::MethodNotAllowed()),
-                    )
-            })
     })
-    .bind("127.0.0.1:8080")?
-    .start();
-
-    println!("Starting http server: 127.0.0.1:8080");
-    sys.run()
+    .bind("0.0.0.0:8181")?
+    .run()
 }
