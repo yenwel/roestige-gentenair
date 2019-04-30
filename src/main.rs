@@ -39,6 +39,6 @@ fn main() -> std::io::Result<()> {
                 web::resource("/").route(web::post().to_async(index_mjsonrust)),
             )
     })
-    .bind("0.0.0.0:8181")?
+    .bind("0.0.0.0:10001")?
     .run()
 }
